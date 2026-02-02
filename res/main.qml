@@ -53,7 +53,9 @@ ApplicationWindow {
                     verticalAlignment: Text.AlignVCenter
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 Button {
                     id: customBtn
@@ -101,9 +103,9 @@ ApplicationWindow {
                 item.buttonText = Qt.binding(() => cfg.hotkey); // 动态绑定 C++ 属性
                 item.btnGroup = mainButtonGroup;
                 item.clicked.connect(function () {
-                    cfg.isRecording = true; 
-                    // 这里的录制逻辑交由 C++ 的 setRecording(true) 去拦截键盘
-                    // QML 这边只需要把按钮设为 checked 即可
+                    cfg.startRecording("hotkey");
+                // 这里的录制逻辑交由 C++ 的 setRecording(true) 去拦截键盘
+                // QML 这边只需要把按钮设为 checked 即可
                 });
             }
         }
@@ -117,7 +119,7 @@ ApplicationWindow {
                 item.buttonText = Qt.binding(() => cfg.simulateKey);
                 item.btnGroup = mainButtonGroup;
                 item.clicked.connect(function () {
-                    cfg.isRecording = true;
+                    cfg.startRecording("simulateKey");
                 });
             }
         }
@@ -168,15 +170,38 @@ ApplicationWindow {
             }
         }
 
-        Overlay.modal: Rectangle { color: "#88000000" }
+        Overlay.modal: Rectangle {
+            color: "#88000000"
+        }
 
-        enter: Transition { NumberAnimation { property: "y"; from: window.height; to: window.height * 0.5; duration: 250; easing.type: Easing.OutQuad } }
-        exit: Transition { NumberAnimation { property: "y"; from: window.height * 0.5; to: window.height; duration: 200; easing.type: Easing.InQuad } }
+        enter: Transition {
+            NumberAnimation {
+                property: "y"
+                from: window.height
+                to: window.height * 0.5
+                duration: 250
+                easing.type: Easing.OutQuad
+            }
+        }
+        exit: Transition {
+            NumberAnimation {
+                property: "y"
+                from: window.height * 0.5
+                to: window.height
+                duration: 200
+                easing.type: Easing.InQuad
+            }
+        }
 
         background: Rectangle {
             color: Material.background
             radius: 12
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 12; color: parent.color }
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 12
+                color: parent.color
+            }
         }
     }
 
