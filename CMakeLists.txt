@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(example VERSION 1.0 LANGUAGES CXX)
+project(AutoClicker VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOMOC ON)
@@ -14,6 +14,8 @@ qt_standard_project_setup()
 
 set(SOURCE_FILES
         src/main.cpp
+        src/Theme.cpp
+        src/Theme.hpp
 )
 
 set(RESOURCE_FILES
@@ -21,8 +23,7 @@ set(RESOURCE_FILES
 )
 
 set(ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/public/Icon.ico"
-        src/Theme.cpp
-        src/Theme.hpp)
+        public/version.rc)
 
 add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
         ${SOURCE_FILES}
