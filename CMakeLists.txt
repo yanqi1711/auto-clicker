@@ -16,6 +16,8 @@ set(SOURCE_FILES
         src/main.cpp
         src/Theme.cpp
         src/Theme.hpp
+        src/Config.cpp
+        src/Config.hpp
 )
 
 set(RESOURCE_FILES
@@ -41,3 +43,4 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 install(TARGETS ${PROJECT_NAME} BUNDLE DESTINATION /Applications)
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/config" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")

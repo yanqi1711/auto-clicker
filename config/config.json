@@ -1,5 +1,5 @@
 {
-    "theme": "light",
-    "hotKey": "F1",
-    "currentBtn": "LeftBtn"
+    "hotkey": "F2",
+    "simulateKey": "RightMouseBtn",
+    "interval": 200
 }
