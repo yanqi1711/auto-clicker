@@ -1,0 +1,8 @@
+<RCC>
+	<qresource prefix="/">
+		<file>res/main.qml</file>
+		<file>public/IcTwotoneDarkMode.svg</file>
+		<file>public/IcTwotoneLightMode.svg</file>
+		<file alias="icon">public/Icon.ico</file>
+	</qresource>
+</RCC>
