@@ -10,7 +10,6 @@ ApplicationWindow {
     visible: true
     title: "AutoClicker"
     font.pointSize: 16
-    font.bold: true
 
     property bool uiDark: themeSwitch.userModified ? themeSwitch.checked : theme.isDarkMode
     property color textColor: Material.foreground
@@ -18,19 +17,29 @@ ApplicationWindow {
 
     Material.theme: uiDark ? Material.Dark : Material.Light
     Material.accent: Material.Blue
+    Material.background: uiDark ? "#191919" : "#ffffff"
+
+    ButtonGroup {
+        id: mainButtonGroup
+        exclusive: true
+    }
 
     Component {
         id: settingRowComponent
         Rectangle {
+            id: rowRoot
             property string labelText: ""
             property string buttonText: ""
+            property var btnGroup: null
 
             width: parent.width
             height: 60
             border.width: 1
             border.color: borderColor
-            radius: 4
+            radius: 3
             color: Material.background
+
+            signal clicked
 
             RowLayout {
                 anchors.fill: parent
@@ -40,6 +49,7 @@ ApplicationWindow {
                 Label {
                     text: labelText
                     color: textColor
+                    font.bold: true
                     verticalAlignment: Text.AlignVCenter
                 }
 
@@ -51,26 +61,30 @@ ApplicationWindow {
                     id: customBtn
                     text: buttonText
 
-                    leftPadding: 5
-                    rightPadding: 5
-                    topPadding: 5
-                    bottomPadding: 5
+                    onClicked: rowRoot.clicked()
+
+                    checkable: true
+                    ButtonGroup.group: btnGroup
+
+                    leftPadding: 15
+                    rightPadding: 15
 
                     contentItem: Text {
                         text: customBtn.text
-                        font: window.font
-                        color: textColor
+                        font.pointSize: 14
+                        font.bold: customBtn.checked
+                        color: customBtn.checked ? "#fff" : textColor
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
 
                     background: Rectangle {
-                        anchors.fill: parent
-
-                        color: customBtn.pressed ? Material.color(Material.Grey, Material.Shade300) : "transparent"
-                        border.color: '#3fa8cb'
+                        implicitWidth: 80
+                        implicitHeight: 36
+                        color: customBtn.checked ? "#6872ab" : Material.background
+                        border.color: customBtn.checked ? "#6872ab" : borderColor
                         border.width: 1
-                        radius: 4
+                        radius: 3
                     }
                 }
             }
@@ -91,6 +105,7 @@ ApplicationWindow {
             onLoaded: {
                 item.labelText = "HotKey";
                 item.buttonText = "F1";
+                item.btnGroup = mainButtonGroup;
             }
         }
 
@@ -100,6 +115,7 @@ ApplicationWindow {
             onLoaded: {
                 item.labelText = "Simulate key";
                 item.buttonText = "LeftMouseBtn";
+                item.btnGroup = mainButtonGroup;
             }
         }
 
@@ -109,6 +125,90 @@ ApplicationWindow {
             onLoaded: {
                 item.labelText = "Click Interval(ms)";
                 item.buttonText = "100";
+                item.btnGroup = mainButtonGroup;
+
+                item.clicked.connect(function () {
+                    bottomPanel.open();
+                });
+            }
+        }
+    }
+
+    Popup {
+        id: bottomPanel
+        x: 0
+        width: parent.width
+        height: parent.height / 2
+        y: parent.height
+        padding: 0
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        Overlay.modal: Rectangle {
+            color: "#88000000"
+        }
+
+        enter: Transition {
+            NumberAnimation {
+                property: "y"
+                from: window.height
+                to: window.height * 1 / 2
+                duration: 250
+                easing.type: Easing.OutQuad
+            }
+        }
+        exit: Transition {
+            NumberAnimation {
+                property: "y"
+                from: window.height * 1 / 2
+                to: window.height
+                duration: 200
+                easing.type: Easing.InQuad
+            }
+        }
+
+        background: Rectangle {
+            color: Material.background
+            radius: 12
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 12
+                color: parent.color
+                visible: parent.radius > 0
+            }
+        }
+
+        contentItem: Item {
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 15
+
+                Label {
+                    text: "Set Click Interval"
+                    font.bold: true
+                    font.pointSize: 18
+                    color: textColor
+                    Layout.alignment: Qt.AlignHCenter
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    color: "purple"
+                    radius: 4
+                    Label {
+                        text: "Input Area Placeholder"
+                        anchors.centerIn: parent
+                        color: "white"
+                    }
+                }
+
+                Item {
+                    Layout.fillHeight: true
+                }
             }
         }
     }
