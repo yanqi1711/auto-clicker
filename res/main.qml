@@ -1,18 +1,51 @@
 import QtQuick
+import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
 ApplicationWindow {
     id: window
-    width: 470
+    width: 430
     height: 640
     visible: true
     title: "AutoClicker"
+    font.pointSize: 16
 
-    readonly property bool uiDark: themeSwitch.userModified ? themeSwitch.checked : theme.isDarkMode
+    property bool uiDark: themeSwitch.userModified ? themeSwitch.checked : theme.isDarkMode
+    property color textColor: Material.foreground
+    property color borderColor: Material.color(Material.Grey, Material.Shade400)
 
     Material.theme: uiDark ? Material.Dark : Material.Light
     Material.accent: Material.Blue
+
+    Rectangle {
+        anchors.top: parent.top
+        anchors.topMargin: 70
+        anchors.left: parent.left
+        anchors.leftMargin: 10
+        anchors.horizontalCenter: parent.horizontalCenter
+        height: 70
+        border.width: 1
+        border.color: borderColor
+        radius: 4
+        color: Material.background
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            Label {
+                text: "HotKey"
+                color: textColor
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            Button {
+                text: "F1"
+            }
+        }
+    }
 
     Row {
         anchors.right: parent.right

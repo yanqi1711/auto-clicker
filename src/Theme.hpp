@@ -7,14 +7,14 @@ class Theme : public QObject {
 	Q_OBJECT
 	Q_PROPERTY(bool isDarkMode READ isDarkMode NOTIFY darkModeChanged)
 
-    public:
+public:
 	explicit Theme(QObject *parent = nullptr);
 	bool isDarkMode() const;
 
-    signals:
+signals:
 	void darkModeChanged();
 
-    private:
+private:
 	void onColorSchemeChanged();
 };
 

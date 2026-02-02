@@ -1,28 +1,25 @@
 #include "Theme.hpp"
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
-#include <QIcon>
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	QQuickStyle::setStyle("Material");
 
 	QGuiApplication app(argc, argv);
-
-	app.setWindowIcon(QIcon(":/icon"));
-
-	Theme theme;
 	QQmlApplicationEngine engine;
 
-	engine.rootContext()->setContextProperty("theme", &theme);
-
+	Theme theme;
 	const QUrl url(QStringLiteral("qrc:/res/main.qml"));
 
+	app.setWindowIcon(QIcon(":/icon"));
+	engine.rootContext()->setContextProperty("theme", &theme);
+
 	QObject::connect(
-		&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
-		[]() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
+	    &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+	    []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
 	engine.load(url);
 
