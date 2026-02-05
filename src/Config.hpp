@@ -12,7 +12,6 @@
 
 class Config : public QObject {
 	Q_OBJECT
-	// 属性绑定：QML 直接访问
 	Q_PROPERTY(QString hotkey READ hotkey WRITE setHotkey NOTIFY hotkeyChanged)
 	Q_PROPERTY(QString simulateKey READ simulateKey WRITE setSimulateKey NOTIFY
 	               simulateKeyChanged)
@@ -28,7 +27,6 @@ public:
 
 	static Config *getInstance();
 
-	// 基础 Getter
 	bool isRunning() const {
 		return m_isRunning;
 	}
@@ -45,13 +43,11 @@ public:
 		return m_data["interval"].toInt(100);
 	}
 
-	// QML 调用的方法
 	Q_INVOKABLE void startRecording(QString target);
 	Q_INVOKABLE void stopAutoClick();
 
-	// 属性 Setter
-	void setHotkey(const QString &name, int vk); // 内部使用，同时存名称和码
-	void setHotkey(const QString &v) { /* 兼容旧接口 */ }
+	void setHotkey(const QString &name, int vk);
+	void setHotkey(const QString &v) {}
 	void setSimulateKey(const QString &name, int vk);
 	void setSimulateKey(const QString &v) {}
 	void setInterval(int v);
@@ -65,8 +61,8 @@ signals:
 	void isRunningChanged();
 
 private slots:
-	void performAction(); // 连点执行
-	void saveConfig();    // 实际写磁盘
+	void performAction();
+	void saveConfig();
 
 private:
 	static Config *instance;
@@ -77,7 +73,7 @@ private:
 
 	void startHook();
 	void toggleAutoClick();
-	void markDirty(); // 触发延迟保存
+	void markDirty();
 
 	QJsonObject m_data;
 	const QString m_fileName = "config/config.json";
