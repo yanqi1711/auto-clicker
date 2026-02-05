@@ -59,7 +59,7 @@ ApplicationWindow {
 
                 Button {
                     id: customBtn
-                    text: buttonText // 如果正在录制且选中，显示省略号
+                    text: buttonText
                     onClicked: rowRoot.clicked()
                     checkable: true
                     ButtonGroup.group: btnGroup
@@ -100,12 +100,10 @@ ApplicationWindow {
             sourceComponent: settingRowComponent
             onLoaded: {
                 item.labelText = "HotKey";
-                item.buttonText = Qt.binding(() => cfg.hotkey); // 动态绑定 C++ 属性
+                item.buttonText = Qt.binding(() => cfg.hotkey);
                 item.btnGroup = mainButtonGroup;
                 item.clicked.connect(function () {
                     cfg.startRecording("hotkey");
-                // 这里的录制逻辑交由 C++ 的 setRecording(true) 去拦截键盘
-                // QML 这边只需要把按钮设为 checked 即可
                 });
             }
         }

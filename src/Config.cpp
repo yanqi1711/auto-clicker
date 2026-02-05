@@ -7,38 +7,21 @@
 #include <QKeyEvent>
 
 Config *Config::instance = nullptr;
-Config::Config(QObject *parent) : QObject(parent) {
-	instance = this;
-	m_clickTimer = new QTimer(this);
-	connect(m_clickTimer, &QTimer::timeout, this, &Config::performAction);
 
-	loadConfig();
-	startHook(); // 初始化时启动钩子
-}
-
-Config::~Config() {
-	if (m_hook)
-		UnhookWindowsHookEx(m_hook);
-	if (m_mouseHook)
-		UnhookWindowsHookEx(m_mouseHook);
-}
-
+// 辅助函数：将虚拟键码转为可读名称
 QString vkToName(int vk) {
 	if (vk == VK_LBUTTON)
 		return "LeftClick";
 	if (vk == VK_RBUTTON)
 		return "RightClick";
-	if (vk >= VK_F1 && vk <= VK_F12)
-		return "F" + QString::number(vk - VK_F1 + 1);
-	if (vk == VK_SPACE)
-		return "Space";
-	if (vk == VK_ESCAPE)
-		return "Esc";
-	if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL)
-		return "Ctrl";
+	if (vk == VK_MBUTTON)
+		return "MidClick";
 
-	// 其他字符键
 	UINT scanCode = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
+	// 处理扩展键位（如方向键、右侧Ctrl等）
+	if (vk >= VK_PRIOR && vk <= VK_HELP)
+		scanCode |= 0x100;
+
 	WCHAR name[64];
 	if (GetKeyNameTextW(scanCode << 16, name, 64) > 0) {
 		return QString::fromWCharArray(name);
@@ -46,177 +29,212 @@ QString vkToName(int vk) {
 	return QString("Key_%1").arg(vk);
 }
 
-// 核心：Windows 键盘消息回调
+Config::Config(QObject *parent) : QObject(parent) {
+	instance = this;
+
+	// 连点定时器
+	m_clickTimer = new QTimer(this);
+	connect(m_clickTimer, &QTimer::timeout, this, &Config::performAction);
+
+	// 延迟保存定时器：防止滑块拖动产生频繁IO
+	m_saveTimer = new QTimer(this);
+	m_saveTimer->setSingleShot(true);
+	connect(m_saveTimer, &QTimer::timeout, this, &Config::saveConfig);
+
+	// 加载配置并启动钩子
+	QFile file(m_fileName);
+	if (file.open(QIODevice::ReadOnly)) {
+		m_data = QJsonDocument::fromJson(file.readAll()).object();
+		file.close();
+	}
+	startHook();
+}
+
+Config::~Config() {
+	if (m_kbdHook)
+		UnhookWindowsHookEx(m_kbdHook);
+	if (m_mouseHook)
+		UnhookWindowsHookEx(m_mouseHook);
+}
+
+Config *Config::getInstance() {
+	return instance;
+}
+
+// --- Hook 逻辑 ---
+
 LRESULT CALLBACK Config::LowLevelKeyboardProc(int nCode, WPARAM wParam,
                                               LPARAM lParam) {
-	MSLLHOOKSTRUCT *p = (MSLLHOOKSTRUCT *)lParam;
-	if (p->flags & LLMHF_INJECTED)
-		return CallNextHookEx(NULL, nCode, wParam, lParam);
-	if (nCode == HC_ACTION &&
-	    (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
+	if (nCode == HC_ACTION) {
 		KBDLLHOOKSTRUCT *p = (KBDLLHOOKSTRUCT *)lParam;
 
-		// 将 VK Code 转换为字符串 (这里简单处理，实际可做更复杂的映射)
-		QString keyName =
-		    QString::fromStdWString(std::wstring(1, (wchar_t)p->vkCode));
-		if (p->vkCode >= VK_F1 && p->vkCode <= VK_F12)
-			keyName = "F" + QString::number(p->vkCode - VK_F1 + 1);
-
-		// 场景 A: 正在录制
-		// 在 LowLevelKeyboardProc 里的录制逻辑处：
-		if (instance->m_isRecording) {
-			QString keyName = vkToName(p->vkCode);
-			if (instance->m_recordingTarget == "hotkey") {
-				instance->setHotkey(keyName);
-			} else {
-				instance->setSimulateKey(keyName);
-			}
-			instance->setIsRecording(false);
-			return 1;
+		// 1. 紧急避险：Shift + Esc 强制停止所有动作
+		if (p->vkCode == VK_ESCAPE && (GetKeyState(VK_SHIFT) & 0x8000)) {
+			if (instance->m_isRunning)
+				instance->toggleAutoClick();
+			return CallNextHookEx(nullptr, nCode, wParam, lParam);
 		}
 
-		// 场景 B: 按下了启动热键
-		if (keyName == instance->hotkey()) {
-			instance->toggleAutoClick();
-			return 1; // 拦截，防止连点时误触发其他软件功能
+		// 2. 录制逻辑
+		if (instance->m_isRecording) {
+			QString name = vkToName(p->vkCode);
+			if (instance->m_recordingTarget == "hotkey")
+				instance->setHotkey(name, p->vkCode);
+			else
+				instance->setSimulateKey(name, p->vkCode);
+
+			instance->setIsRecording(false);
+			return 1; // 拦截，防止录制时触发系统功能
+		}
+
+		// 3. 触发逻辑
+		if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+			if (p->vkCode == instance->m_data["hotkeyVk"].toInt()) {
+				instance->toggleAutoClick();
+				return 1;
+			}
 		}
 	}
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
+	return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
 LRESULT CALLBACK Config::LowLevelMouseProc(int nCode, WPARAM wParam,
                                            LPARAM lParam) {
 	MSLLHOOKSTRUCT *p = (MSLLHOOKSTRUCT *)lParam;
+	// 忽略模拟产生的点击，防止递归死循环
 	if (p->flags & LLMHF_INJECTED)
-		return CallNextHookEx(NULL, nCode, wParam, lParam);
+		return CallNextHookEx(nullptr, nCode, wParam, lParam);
+
 	if (nCode == HC_ACTION && instance->m_isRecording) {
-		QString btnName = "";
-
-		// 识别点击了哪个键
+		int vk = 0;
 		if (wParam == WM_LBUTTONDOWN)
-			btnName = "LeftClick";
+			vk = VK_LBUTTON;
 		else if (wParam == WM_RBUTTONDOWN)
-			btnName = "RightClick";
+			vk = VK_RBUTTON;
 		else if (wParam == WM_MBUTTONDOWN)
-			btnName = "MidClick"; // 滚轮按键
+			vk = VK_MBUTTON;
 
-		if (!btnName.isEmpty()) {
-			if (instance->m_recordingTarget == "hotkey") {
-				instance->setHotkey(btnName);
-			} else {
-				instance->setSimulateKey(btnName);
-			}
+		if (vk != 0) {
+			QString name = vkToName(vk);
+			if (instance->m_recordingTarget == "hotkey")
+				instance->setHotkey(name, vk);
+			else
+				instance->setSimulateKey(name, vk);
 			instance->setIsRecording(false);
-			return 1; // 拦截点击，防止录制时误触发 UI 按钮
+			return 1;
 		}
 	}
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
+	return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
-void Config::startHook() {
-	m_hook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc,
-	                          GetModuleHandle(NULL), 0);
-	m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc,
-	                               GetModuleHandle(NULL), 0);
-}
+// --- 核心业务逻辑 ---
 
-void Config::toggleAutoClick() {
-	m_isRunning = !m_isRunning;
-	if (m_isRunning) {
-		m_clickTimer->start(interval());
-	} else {
-		m_clickTimer->stop();
-	}
-	emit isRunningChanged();
-}
-
-// 模拟点击逻辑
 void Config::performAction() {
-	QString action = simulateKey();
-	INPUT input = {0};
-	input.type = INPUT_MOUSE;
-
-	if (action == "LeftClick") {
-		// 模拟左键按下和弹起
-		input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-		SendInput(1, &input, sizeof(INPUT));
-		input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
-		SendInput(1, &input, sizeof(INPUT));
-	} else if (action == "RightClick") {
-		input.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
-		SendInput(1, &input, sizeof(INPUT));
-		input.mi.dwFlags = MOUSEEVENTF_RIGHTUP;
-		SendInput(1, &input, sizeof(INPUT));
-	} else if (action == "MidClick") {
-		input.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
-		SendInput(1, &input, sizeof(INPUT));
-		input.mi.dwFlags = MOUSEEVENTF_MIDDLEUP;
-		SendInput(1, &input, sizeof(INPUT));
-	} else {
-		// 模拟键盘：这里假设 simulateKey 存的是 VK 码
-		// 实际开发建议写个映射表
-		BYTE vk = (BYTE)action.at(0).toLatin1();
-		keybd_event(vk, 0, 0, 0);
-		keybd_event(vk, 0, KEYEVENTF_KEYUP, 0);
-	}
-}
-
-void Config::loadConfig() {
-	QFile file(m_fileName);
-	if (!file.open(QIODevice::ReadOnly)) {
-		qDebug() << "Using default settings.";
+	int vk = m_data["simulateKeyVk"].toInt();
+	if (vk == 0)
 		return;
+
+	INPUT inputs[2] = {0};
+	if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) {
+		// 模拟鼠标
+		inputs[0].type = INPUT_MOUSE;
+		if (vk == VK_LBUTTON)
+			inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+		else if (vk == VK_RBUTTON)
+			inputs[0].mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+
+		inputs[1] = inputs[0];
+		inputs[1].mi.dwFlags |=
+		    (vk == VK_LBUTTON ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
+	} else {
+		// 模拟键盘
+		inputs[0].type = INPUT_KEYBOARD;
+		inputs[0].ki.wVk = (WORD)vk;
+		inputs[1] = inputs[0];
+		inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
 	}
-	m_data = QJsonDocument::fromJson(file.readAll()).object();
-	file.close();
-	emit hotkeyChanged();
-	emit simulateKeyChanged();
-	emit intervalChanged();
+	SendInput(2, inputs, sizeof(INPUT));
 }
 
-void Config::saveConfig() {
-	QFileInfo fileInfo(m_fileName);
-	if (!fileInfo.dir().exists())
-		fileInfo.dir().mkpath(".");
-	QFile file(m_fileName);
-	if (file.open(QIODevice::WriteOnly)) {
-		file.write(QJsonDocument(m_data).toJson());
-		file.close();
-	}
-}
+// --- 属性控制 ---
 
-// Getters
-QString Config::hotkey() const { return m_data["hotkey"].toString("F1"); }
-QString Config::simulateKey() const {
-	return m_data["simulateKey"].toString("LeftClick");
-}
-int Config::interval() const { return m_data["interval"].toInt(100); }
-
-// Setters (带自动保存)
-void Config::setHotkey(const QString &v) {
-	if (hotkey() != v) {
-		m_data["hotkey"] = v;
+void Config::setHotkey(const QString &name, int vk) {
+	if (m_data["hotkeyVk"].toInt() != vk) {
+		m_data["hotkeyName"] = name;
+		m_data["hotkeyVk"] = vk;
 		emit hotkeyChanged();
-		saveConfig();
+		markDirty();
 	}
 }
-void Config::setSimulateKey(const QString &v) {
-	if (simulateKey() != v) {
-		m_data["simulateKey"] = v;
+
+void Config::setSimulateKey(const QString &name, int vk) {
+	if (m_data["simulateKeyVk"].toInt() != vk) {
+		m_data["simulateKeyName"] = name;
+		m_data["simulateKeyVk"] = vk;
 		emit simulateKeyChanged();
-		saveConfig();
+		markDirty();
 	}
 }
+
 void Config::setInterval(int v) {
 	if (interval() != v) {
 		m_data["interval"] = v;
 		emit intervalChanged();
-		saveConfig();
+		if (m_isRunning)
+			m_clickTimer->start(v);
+		markDirty();
 	}
 }
+
+void Config::startRecording(QString target) {
+	m_recordingTarget = target;
+	setIsRecording(true);
+}
+
 void Config::setIsRecording(bool v) {
 	if (m_isRecording != v) {
 		m_isRecording = v;
 		emit isRecordingChanged();
+	}
+}
+
+void Config::markDirty() {
+	m_saveTimer->start(1000);
+}
+
+void Config::saveConfig() {
+	QDir().mkpath(QFileInfo(m_fileName).absolutePath());
+	QFile file(m_fileName);
+	if (file.open(QIODevice::WriteOnly)) {
+		file.write(QJsonDocument(m_data).toJson());
+		file.close();
+		qDebug() << "Config saved.";
+	}
+}
+
+void Config::startHook() {
+	m_kbdHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc,
+	                             GetModuleHandle(nullptr), 0);
+	m_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc,
+	                               GetModuleHandle(nullptr), 0);
+}
+
+// 1. 停止
+void Config::stopAutoClick() {
+	if (m_isRunning) {
+		m_isRunning = false;
+		m_clickTimer->stop();
+		emit isRunningChanged();
+	}
+}
+
+// 2. 切换（QML 按钮点击时调用）
+void Config::toggleAutoClick() {
+	if (m_isRunning) {
+		stopAutoClick();
+	} else {
+		m_isRunning = true;
+		m_clickTimer->start(interval());
+		emit isRunningChanged();
 	}
 }
