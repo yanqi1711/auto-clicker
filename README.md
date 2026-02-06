@@ -13,3 +13,6 @@ This app is a Simplified  auto clicker on windows platform.
 
 ### Example
 <img src="./public/Screenshot1.png" alt="screenshot" width="400"/>&nbsp;&nbsp;<img src="./public/Screenshot2.png" alt="screenshot" width="400"/>
+
+### License
+MIT License
