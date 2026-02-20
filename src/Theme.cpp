@@ -11,4 +11,6 @@ bool Theme::isDarkMode() const {
 	return qGuiApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 }
 
-void Theme::onColorSchemeChanged() { emit darkModeChanged(); }
+void Theme::onColorSchemeChanged() {
+	emit darkModeChanged();
+}
