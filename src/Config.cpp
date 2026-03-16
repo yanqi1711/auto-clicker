@@ -58,6 +58,9 @@ Config *Config::getInstance() {
 
 LRESULT CALLBACK Config::LowLevelKeyboardProc(int nCode, WPARAM wParam,
                                               LPARAM lParam) {
+	if (!instance)
+		return CallNextHookEx(nullptr, nCode, wParam, lParam);
+
 	if (nCode == HC_ACTION) {
 		KBDLLHOOKSTRUCT *p = (KBDLLHOOKSTRUCT *)lParam;
 
@@ -90,11 +93,17 @@ LRESULT CALLBACK Config::LowLevelKeyboardProc(int nCode, WPARAM wParam,
 
 LRESULT CALLBACK Config::LowLevelMouseProc(int nCode, WPARAM wParam,
                                            LPARAM lParam) {
+	if (!instance)
+		return CallNextHookEx(nullptr, nCode, wParam, lParam);
+
+	if (nCode != HC_ACTION)
+		return CallNextHookEx(nullptr, nCode, wParam, lParam);
+
 	MSLLHOOKSTRUCT *p = (MSLLHOOKSTRUCT *)lParam;
 	if (p->flags & LLMHF_INJECTED)
 		return CallNextHookEx(nullptr, nCode, wParam, lParam);
 
-	if (nCode == HC_ACTION && instance->m_isRecording) {
+	if (instance->m_isRecording) {
 		int vk = 0;
 		if (wParam == WM_LBUTTONDOWN)
 			vk = VK_LBUTTON;
@@ -128,10 +137,16 @@ void Config::performAction() {
 			inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
 		else if (vk == VK_RBUTTON)
 			inputs[0].mi.dwFlags = MOUSEEVENTF_RIGHTDOWN;
+		else if (vk == VK_MBUTTON)
+			inputs[0].mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN;
 
 		inputs[1] = inputs[0];
-		inputs[1].mi.dwFlags |=
-		    (vk == VK_LBUTTON ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
+		if (vk == VK_LBUTTON)
+			inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+		else if (vk == VK_RBUTTON)
+			inputs[1].mi.dwFlags = MOUSEEVENTF_RIGHTUP;
+		else
+			inputs[1].mi.dwFlags = MOUSEEVENTF_MIDDLEUP;
 	} else {
 		inputs[0].type = INPUT_KEYBOARD;
 		inputs[0].ki.wVk = (WORD)vk;
@@ -160,6 +175,8 @@ void Config::setSimulateKey(const QString &name, int vk) {
 }
 
 void Config::setInterval(int v) {
+	v = qMax(1, v);
+
 	if (interval() != v) {
 		m_data["interval"] = v;
 		emit intervalChanged();
