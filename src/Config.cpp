@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QKeyEvent>
+#include <QMap>
 
 Config *Config::instance = nullptr;
 
@@ -27,6 +28,29 @@ QString vkToName(int vk) {
 	return QString("Key_%1").arg(vk);
 }
 
+int nameToVk(const QString &name) {
+	static const QMap<QString, int> keyMap = {
+	    {"LeftClick", VK_LBUTTON},   {"RightClick", VK_RBUTTON},
+	    {"MidClick", VK_MBUTTON},    {"LeftMouseBtn", VK_LBUTTON},
+	    {"RightMouseBtn", VK_RBUTTON},
+	    {"MiddleMouseBtn", VK_MBUTTON},
+	    {"F1", VK_F1},               {"F2", VK_F2},
+	    {"F3", VK_F3},               {"F4", VK_F4},
+	    {"F5", VK_F5},               {"F6", VK_F6},
+	    {"F7", VK_F7},               {"F8", VK_F8},
+	    {"F9", VK_F9},               {"F10", VK_F10},
+	    {"F11", VK_F11},             {"F12", VK_F12},
+	};
+
+	if (name.size() == 1) {
+		SHORT vk = VkKeyScanW(name.at(0).unicode());
+		if (vk != -1)
+			return LOBYTE(vk);
+	}
+
+	return keyMap.value(name, 0);
+}
+
 Config::Config(QObject *parent) : QObject(parent) {
 	instance = this;
 
@@ -42,6 +66,40 @@ Config::Config(QObject *parent) : QObject(parent) {
 		m_data = QJsonDocument::fromJson(file.readAll()).object();
 		file.close();
 	}
+
+	bool configMigrated = false;
+	if (!m_data.contains("hotkeyVk")) {
+		const QString oldHotkey = m_data["hotkey"].toString("F1");
+		m_data["hotkeyVk"] = nameToVk(oldHotkey);
+		m_data["hotkeyName"] = vkToName(m_data["hotkeyVk"].toInt(VK_F1));
+		configMigrated = true;
+	}
+	if (!m_data.contains("simulateKeyVk")) {
+		const QString oldSimulateKey = m_data["simulateKey"].toString("LeftClick");
+		m_data["simulateKeyVk"] = nameToVk(oldSimulateKey);
+		m_data["simulateKeyName"] =
+		    vkToName(m_data["simulateKeyVk"].toInt(VK_LBUTTON));
+		configMigrated = true;
+	}
+	if (!m_data.contains("interval")) {
+		m_data["interval"] = 100;
+		configMigrated = true;
+	}
+
+	if (m_data["hotkeyVk"].toInt() == 0) {
+		m_data["hotkeyVk"] = VK_F1;
+		m_data["hotkeyName"] = vkToName(VK_F1);
+		configMigrated = true;
+	}
+	if (m_data["simulateKeyVk"].toInt() == 0) {
+		m_data["simulateKeyVk"] = VK_LBUTTON;
+		m_data["simulateKeyName"] = vkToName(VK_LBUTTON);
+		configMigrated = true;
+	}
+
+	if (configMigrated)
+		saveConfig();
+
 	startHook();
 }
 
